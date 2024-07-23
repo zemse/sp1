@@ -42,6 +42,63 @@ use crate::memory::MemoryInitializeFinalizeEvent;
 use crate::utils::SP1CoreOpts;
 use crate::{alu::AluEvent, cpu::CpuEvent};
 
+#[derive(Debug, Default)]
+pub struct Risc5Counter(HashMap<Opcode, usize>);
+
+impl Risc5Counter {
+    pub fn record(&mut self, opcode: Opcode) {
+        let count = self.0.entry(opcode).or_insert(0);
+        *count += 1;
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Counter {
+    counts: HashMap<String, Vec<usize>>, // opcode => previous steps count
+    pending: Option<(String, usize)>,    // opcode => steps count
+}
+
+// impl Counter {
+//     pub fn record(&mut self, opcode: &str, global_step_count: usize, is_start: bool) {
+//         let old_step_count = self.pending.remove(opcode);
+//         if let Some(old_step_count) = old_step_count {
+//             // assert!(!is_start, "opcode {} is already in pending", opcode);
+//             let steps = global_step_count - old_step_count;
+//             let mut arr = self.counts.remove(opcode).unwrap_or_default();
+//             arr.push(steps);
+//             self.counts.insert(opcode.to_string(), arr);
+//         } else {
+//             // assert!(is_start, "opcode {} is not in pending", opcode);
+//             self.pending.insert(opcode.to_string(), global_step_count);
+//         }
+//     }
+// }
+
+impl Counter {
+    pub fn record(&mut self, opcode: &str, global_step_count: usize, is_start: bool) {
+        if let Some((opcode_prev, old_step_count)) = &self.pending {
+            let steps = global_step_count - old_step_count;
+            let mut arr = self.counts.remove(opcode_prev).unwrap_or_default();
+            arr.push(steps);
+            self.counts.insert(opcode_prev.to_string(), arr);
+
+            self.pending = Some((opcode.to_string(), global_step_count));
+        } else {
+            // assert!(is_start, "opcode {} is not in pending", opcode);
+            self.pending = Some((opcode.to_string(), global_step_count));
+        }
+    }
+
+    // pub fn end(&mut self, global_step_count: usize) {
+    //     if let Some((opcode, old_step_count)) = self.pending.take() {
+    //         let steps = global_step_count - old_step_count;
+    //         let mut arr = self.counts.remove(&opcode).unwrap_or_default();
+    //         arr.push(steps);
+    //         self.counts.insert(opcode, arr);
+    //     }
+    // }
+}
+
 /// An implementation of a runtime for the SP1 RISC-V zkVM.
 ///
 /// The runtime is responsible for executing a user program and tracing important events which occur
@@ -50,6 +107,15 @@ use crate::{alu::AluEvent, cpu::CpuEvent};
 /// For more information on the RV32IM instruction set, see the following:
 /// https://www.cs.sfu.ca/~ashriram/Courses/CS295/assets/notebooks/RISCV/RISCV_CARD.pdf
 pub struct Runtime<'a> {
+    /// counter
+    pub steps_counter: usize,
+
+    /// smart counter
+    pub counter: Counter,
+
+    // riscv counter
+    pub risc5_counter: Risc5Counter,
+
     /// The program.
     pub program: Arc<Program>,
 
@@ -146,6 +212,9 @@ impl<'a> Runtime<'a> {
             .unwrap_or(0);
 
         Self {
+            steps_counter: 0,
+            counter: Counter::default(),
+            risc5_counter: Risc5Counter::default(),
             record,
             state: ExecutionState::new(program.pc_start),
             program,
@@ -567,6 +636,8 @@ impl<'a> Runtime<'a> {
 
     /// Execute the given instruction over the current state of the runtime.
     fn execute_instruction(&mut self, instruction: Instruction) -> Result<(), ExecutionError> {
+        self.steps_counter += 1;
+
         let mut pc = self.state.pc;
         let mut clk = self.state.clk;
         let mut exit_code = 0u32;
@@ -590,6 +661,7 @@ impl<'a> Runtime<'a> {
                 .or_insert(1);
         }
 
+        self.risc5_counter.record(instruction.opcode);
         match instruction.opcode {
             // Arithmetic instructions.
             Opcode::ADD => {
@@ -800,9 +872,47 @@ impl<'a> Runtime<'a> {
                 // register is that we write to it later.
                 let t0 = Register::X5;
                 let syscall_id = self.register(t0);
+                // println!("syscall_id = {}", syscall_id);
                 c = self.rr(Register::X11, MemoryAccessPosition::C);
                 b = self.rr(Register::X10, MemoryAccessPosition::B);
                 let syscall = SyscallCode::from_u32(syscall_id);
+                // println!("syscall code = {}, b = {}, c = {}", syscall, b, c);
+
+                // extract info if this is a println then b is 1
+                // parse the btyes here itself
+                // if b == 1 {
+                //     let arg1 = b;
+                //     let arg2 = c;
+                //     let a2 = Register::X12;
+                //     // let rt = &mut precompile_rt.rt;
+                //     let fd = arg1;
+                //     let write_buf = arg2;
+                //     let nbytes = self.register(a2);
+                //     // Read nbytes from memory starting at write_buf.
+                //     let bytes = (0..nbytes)
+                //         .map(|i| self.byte(write_buf + i))
+                //         .collect::<Vec<u8>>();
+                //     // println!("bytes {:?}", bytes);
+                //     let s = core::str::from_utf8(&bytes).unwrap();
+                //     if s.starts_with("op start") {
+                //         let (_, opcode) = s.split_at(8);
+                //         let opcode = opcode.trim();
+                //         println!(
+                //             "detected opcode start = \"{}\" {}",
+                //             opcode, self.steps_counter
+                //         );
+                //         self.counter.record(opcode, self.steps_counter, true);
+                //     } else if s.starts_with("op end") {
+                //         let (_, opcode) = s.split_at(6);
+                //         let opcode = opcode.trim();
+                //         println!(
+                //             "detected opcode end = \"{}\" {}",
+                //             opcode, self.steps_counter
+                //         );
+                //         // self.counter.record(opcode, self.steps_counter, false);
+                //     }
+                //     // print!("parsed string {s}");
+                // }
 
                 if self.print_report && !self.unconstrained {
                     self.report
@@ -1023,9 +1133,14 @@ impl<'a> Runtime<'a> {
     }
 
     pub fn run(&mut self) -> Result<(), ExecutionError> {
+        // println!("runtime run");
         self.emit_events = true;
         self.print_report = true;
-        while !self.execute()? {}
+        let mut i = 0;
+        while !self.execute()? {
+            i += 1;
+        }
+        // println!("Executed {} cycles", i);
         Ok(())
     }
 
@@ -1063,6 +1178,8 @@ impl<'a> Runtime<'a> {
         if done {
             self.postprocess();
         }
+
+        println!("steps_counter: {}", self.steps_counter);
 
         Ok(done)
     }

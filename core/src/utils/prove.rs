@@ -135,6 +135,7 @@ where
     let (pk, vk) = machine.setup(runtime.program.as_ref());
 
     // If we don't need to batch, we can just run the program normally and prove it.
+    println!("opts.shard_batch_size: {}", opts.shard_batch_size);
     if opts.shard_batch_size == 0 {
         // Execute the runtime and collect all the events..
         runtime.run().map_err(SP1CoreProverError::ExecutionError)?;
@@ -174,6 +175,7 @@ where
 
         // If we've reached the final checkpoint, break out of the loop.
         if done {
+            println!("done {}", checkpoints.len());
             break (
                 std::mem::take(&mut runtime.state.public_values_stream),
                 runtime.record.public_values,

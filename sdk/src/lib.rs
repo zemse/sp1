@@ -84,10 +84,11 @@ impl ProverClient {
     /// let client = ProverClient::new();
     /// ```
     pub fn new() -> Self {
-        match env::var("SP1_PROVER")
+        let value = env::var("SP1_PROVER")
             .unwrap_or("local".to_string())
-            .to_lowercase()
-            .as_str()
+            .to_lowercase();
+        println!("Using prover: {}", value);
+        match value.as_str()
         {
             "mock" => Self {
                 prover: Box::new(MockProver::new()),

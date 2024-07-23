@@ -226,6 +226,7 @@ impl SP1Prover {
         elf: &[u8],
         stdin: &SP1Stdin,
     ) -> Result<(SP1PublicValues, ExecutionReport), ExecutionError> {
+        println!("SP1 Prover execute");
         let program = Program::from(elf);
         let opts = SP1CoreOpts::default();
         let mut runtime = Runtime::new(program, opts);
@@ -248,6 +249,7 @@ impl SP1Prover {
         pk: &SP1ProvingKey,
         stdin: &SP1Stdin,
     ) -> Result<SP1CoreProof, SP1CoreProverError> {
+        println!("SP1 Prover prove_core");
         let config = CoreSC::default();
         let program = Program::from(&pk.elf);
         let (proof, public_values_stream) = sp1_core::utils::prove_with_subproof_verifier(

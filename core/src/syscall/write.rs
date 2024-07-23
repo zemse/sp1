@@ -13,6 +13,7 @@ impl SyscallWrite {
 
 impl Syscall for SyscallWrite {
     fn execute(&self, ctx: &mut SyscallContext, arg1: u32, arg2: u32) -> Option<u32> {
+        // here
         let a2 = Register::X12;
         let rt = &mut ctx.rt;
         let fd = arg1;
@@ -23,6 +24,7 @@ impl Syscall for SyscallWrite {
             .map(|i| rt.byte(write_buf + i))
             .collect::<Vec<u8>>();
         let slice = bytes.as_slice();
+        // here
         if fd == 1 {
             let s = core::str::from_utf8(slice).unwrap();
             if s.contains("cycle-tracker-start:") {
@@ -55,6 +57,7 @@ impl Syscall for SyscallWrite {
             } else {
                 let flush_s = update_io_buf(ctx, fd, s);
                 if !flush_s.is_empty() {
+                    // here
                     flush_s
                         .into_iter()
                         .for_each(|line| println!("stdout: {}", line));
