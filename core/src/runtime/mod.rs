@@ -43,7 +43,7 @@ use crate::utils::SP1CoreOpts;
 use crate::{alu::AluEvent, cpu::CpuEvent};
 
 #[derive(Debug, Default)]
-pub struct Risc5Counter(HashMap<Opcode, usize>);
+pub struct Risc5Counter(pub HashMap<Opcode, usize>);
 
 impl Risc5Counter {
     pub fn record(&mut self, opcode: Opcode) {
